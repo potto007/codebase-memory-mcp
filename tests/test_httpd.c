@@ -1100,6 +1100,24 @@ TEST(ui_server_rpc_allows_only_ui_read_tools) {
     ASSERT_EQ(th_status(resp), 200);
     ASSERT_NOT_NULL(strstr(resp, "\"jsonrpc\""));
 
+    /* The UI fetches the graph schema per project (useProjects hook); it must be
+     * on the allowlist or the log floods with 403s on every project refresh. */
+    static const char *allowed_read_tools[] = {"get_graph_schema"};
+    for (size_t i = 0; i < sizeof(allowed_read_tools) / sizeof(allowed_read_tools[0]); i++) {
+        char allowed_body[512];
+        snprintf(allowed_body, sizeof(allowed_body),
+                 "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                 "\"params\":{\"name\":\"%s\",\"arguments\":{}}}",
+                 allowed_read_tools[i]);
+        snprintf(req, sizeof(req),
+                 "POST /rpc HTTP/1.1\r\nContent-Type: application/json\r\n"
+                 "Content-Length: %zu\r\n\r\n%s",
+                 strlen(allowed_body), allowed_body);
+        n = th_http(cbm_http_server_port(ts.srv), req, resp, sizeof(resp));
+        ASSERT_GT(n, 0);
+        ASSERT_NEQ(th_status(resp), 403);
+    }
+
     static const char *blocked_tools[] = {"delete_project", "manage_adr", "ingest_traces",
                                           "index_repository"};
     for (size_t i = 0; i < sizeof(blocked_tools) / sizeof(blocked_tools[0]); i++) {
